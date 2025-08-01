@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use clap::{Error, Parser, builder::Str};
+use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug)]
 #[command(name = "ethvm")]
@@ -12,20 +12,30 @@ struct Cli {
     cmd: Commands,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Subcommand)]
 enum Commands {
     // list
     Ls,
     // will add Install, Use, Rm later
-
 }
 
-fn main() {
-    let args = Cli::parse();
+fn main() -> io::Result<()> {
+    let cli = Cli::parse();
 
-    for _ in 0..args.count {
-        println!("Hello {}", args.name);
+    match cli.cmd {
+        Commands::Ls => {
+            let path = prepare_install_dir()?;
+            let versions = list_versions(&path);
+            let current = current_version(&path)?;
+            for v in versions? {
+                if let Some(ref v) = current {
+                    println!("*{:?}", v);
+                }
+                println!("{:?}", v);
+            }
+        }
     }
+    Ok(())
 }
 
 fn prepare_install_dir() -> io::Result<PathBuf> {
@@ -49,4 +59,27 @@ fn list_versions(install_dir: &Path) -> io::Result<Vec<String>> {
     }
     versions.sort();
     Ok(versions)
+}
+
+fn current_version(install_dir: &Path) -> io::Result<Option<String>> {
+    let symlink_path = install_dir.join("current");
+    let meta = std::fs::symlink_metadata(&symlink_path).unwrap();
+    if !meta.file_type().is_symlink() {
+        return Ok(None);
+    }
+    let target = match std::fs::read_link(&symlink_path) {
+        Ok(p) => p,
+        Err(_) => return Ok(None),
+    };
+
+    let os_name = match target.file_name() {
+        Some(n) => n,
+        None => return Ok(None),
+    };
+    let final_path = match os_name.to_str() {
+        Some(s) => s,
+        None => return Ok(None),
+    };
+
+    Ok(Some(final_path.to_string()))
 }
